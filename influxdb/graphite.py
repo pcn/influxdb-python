@@ -1,17 +1,19 @@
 # -*- python -*-
 
 import time
-from . import util
-from util import tree
-from . import metadata
-from . import reader
+# from . import util
+# from util import tree
+# from . import metadata # XXX add metdata
+# from . import reader
 from collections import deque
 import fnmatch
 import re
 
+# TODO
+# XXX move away from pyKairosDB metadata, reader util.
+#
 
-# XXX: remove
-# RETENTION_TAG = "gr-ret" # terse in order to save space on-disk
+RETENTION_TAG = "gr-ret" # terse in order to save space on-disk
 SECONDS_PER_MINUTE = 60
 SECONDS_PER_HOUR   = SECONDS_PER_MINUTE * 60
 SECONDS_PER_DAY    = SECONDS_PER_HOUR   * 24
@@ -19,9 +21,9 @@ SECONDS_PER_WEEK   = SECONDS_PER_DAY    * 7
 SECONDS_PER_MONTH  = SECONDS_PER_DAY    * 30 # OK, I'm approximating
 SECONDS_PER_YEAR   = SECONDS_PER_DAY    * 365
 
-# INVALID_CHARS      = re.compile(r'[^A-Za-z0-9-_/.]')
-# RET_SEPERATOR_CHAR = "_" # Character we use to separate the retentions
-# RET_GRAPHITE_CHAR  = ":" # Character graphite uses to separate the retentions
+INVALID_CHARS      = re.compile(r'[^A-Za-z0-9-_.]') # not alpha, dash, underscore and period
+RET_SEPERATOR_CHAR = "_" # Character we use to separate the retentions
+RET_GRAPHITE_CHAR  = ":" # Character graphite uses to separate the retentions
 
 def _graphite_metric_list_retentions(metric_list, storage_schemas):
     """:type metric_list: list
@@ -39,10 +41,11 @@ def _graphite_metric_list_retentions(metric_list, storage_schemas):
     retentions = [ get_retentions(m[0])[1].replace(RET_GRAPHITE_CHAR, RET_SEPERATOR_CHAR) for m in metric_list ]
     return retentions
 
-# how graphite will access influxdb
+# how carbon writes to influxdb
 def graphite_metric_list_to_influxdb_list(metric_list, tags):
-    """
-    The term "tags" here comes from kairosdb.  I don't believe that influxdb uses the term tag, but we're going to use the moral equivalent of a tag.
+    """The term "tags" here comes from kairosdb.  I don't believe that
+    influxdb uses the term tag, but we're going to use the moral
+    equivalent of a tag.
 
     :type metric_list: list
     :param metric_list: A list of lists/tuples, each one being the standard graphite formatting of metrics
@@ -73,7 +76,7 @@ def graphite_metric_list_with_retentions_to_influxdb_list(metric_list, storage_s
     :rtype: generator
     :return: generator of dicts formatted appropriately for influxdb
 
-    Use this for entering a large set of metrics that have the disparate retentions.  The expected
+    Use this for entering a large set of metrics that have disparate retentions.  The expected
     way to call this from a sender is to first call _graphite_metric_list_retentions()
 
     XXX this API is getting messy - it should be simpler. -PN
@@ -87,91 +90,91 @@ def graphite_metric_list_with_retentions_to_influxdb_list(metric_list, storage_s
         yield graphite_metric_to_influxdb(m, tags=tags)
 
 
-def _fnmatch_expand_graphite_wildcard_metric_name(conn, name, cache_ttl=60):
-    """
-    :type conn: pyKairosDB.KairosDBConnection
-    :param conn: the connection to the database
+# XXX metadata
+# def _fnmatch_expand_graphite_wildcard_metric_name(conn, name, cache_ttl=60):
+#     """
+#     :type conn: influxdb.InfluxDBClient
+#     :param conn: the connection to the database
+#
+#     :type name: string
+#     :param name: the graphite-like name which can include ".*." to provide wildcard expansion
+#
+#     :type cache_ttl: int
+#     :param cache_ttl: how often to update the cache from KairosDB, in seconds
+#
+#     :rtype: list
+#     :return: a list of unicode strings.  Each unicode string contains an expanded metric name.
+#
+#     KairosDB doesn't currently support wildcards, so get all metric
+#     names and expand them.
+#
+#     Currently only ".*." or "\*." or ".\*" expansions are supported.
+#     Substring expansions aren't supported at this time.
+#
+#     Graphite-web uses fnmatch or something similar, perhaps this
+#     should provide a list and re-use the same functionality.
+#
+#     This function caches the created tree for cache_ttl seconds and
+#     refreshes when the cache has aged beyond the cache_ttl.
+#     """
+#     all_metric_name_list = metadata.get_all_metric_names(conn)
+#     return [ n for n in all_metric_name_list if fnmatch.fnmatch(n, name) ]
 
-    :type name: string
-    :param name: the graphite-like name which can include ".*." to provide wildcard expansion
-
-    :type cache_ttl: int
-    :param cache_ttl: how often to update the cache from KairosDB, in seconds
-
-    :rtype: list
-    :return: a list of unicode strings.  Each unicode string contains an expanded metric name.
-
-    KairosDB doesn't currently support wildcards, so get all metric
-    names and expand them.
-
-    Currently only ".*." or "\*." or ".\*" expansions are supported.
-    Substring expansions aren't supported at this time.
-
-    Graphite-web uses fnmatch or something similar, perhaps this
-    should provide a list and re-use the same functionality.
-
-    This function caches the created tree for cache_ttl seconds and
-    refreshes when the cache has aged beyond the cache_ttl.
-    """
-    all_metric_name_list = metadata.get_all_metric_names(conn)
-    return [ n for n in all_metric_name_list if fnmatch.fnmatch(n, name) ]
-
-def expand_graphite_wildcard_metric_name(conn, name, cache_ttl=60):
-    """
-    :type conn: pyKairosDB.KairosDBConnection
-    :param conn: the connection to the database
-
-    :type name: string
-    :param name: the graphite-like name which can include ".*." to provide wildcard expansion
-
-    :type cache_ttl: int
-    :param cache_ttl: how often to update the cache from KairosDB, in seconds
-
-    :rtype: list
-    :return: a list of unicode strings.  Each unicode string contains an expanded metric name.
-
-    KairosDB doesn't currently support wildcards, so get all metric
-    names and expand them.
-
-    Currently only ".*." or "\*." or ".\*" expansions are supported.
-    Substring expansions aren't supported at this time.
-
-    Graphite-web uses fnmatch or something similar, perhaps this
-    should provide a list and re-use the same functionality.
-
-    This function caches the created tree for cache_ttl seconds and
-    refreshes when the cache has aged beyond the cache_ttl.
-    """
-
-    if "*" not in name:
-        return [u'{0}'.format(name)]
-
-    if "." in name:
-        name_list = [ u'{0}'.format(n) for n in name.split(".")]
-    else:
-        name_list = [ name ]
-    # print "Name_list is {0}".format(name_list)
-
-    ts        = expand_graphite_wildcard_metric_name.cache_timestamp
-    cache_tree = expand_graphite_wildcard_metric_name.cache_tree
-    if ts == 0 or (time.time() - ts > cache_ttl):
-        all_metric_name_list = metadata.get_all_metric_names(conn)
-        cache_tree           = tree()
-        _make_graphite_name_cache(cache_tree, all_metric_name_list)
-        expand_graphite_wildcard_metric_name.cache_tree      = cache_tree
-        expand_graphite_wildcard_metric_name.cache_timestamp = time.time()
-    if name == "*": # special case for the root of the tree:
-        return cache_tree.keys()
-    if '*' in name and not '.' in name:
-        return [ ctk for ctk in cache_tree.keys() if fnmatch.fnmatch(ctk, name)]
-    expanded_name_list = util.metric_name_wildcard_expansion(cache_tree, name_list)
-    # print "expanded_name_list is {0}".format(expanded_name_list)
-
-    return_list = [ ".".join(en) for en in expanded_name_list]
-    return list(set(return_list))
-
-expand_graphite_wildcard_metric_name.cache_tree = tree()
-expand_graphite_wildcard_metric_name.cache_timestamp = 0
+# XXX until I've fixed the reliance on util.
+#  def expand_graphite_wildcard_metric_name(conn, name, cache_ttl=60):
+#      """
+#      :type conn: pyKairosDB.KairosDBConnection
+#      :param conn: the connection to the database
+#
+#      :type name: string
+#      :param name: the graphite-like name which can include ".*." to provide wildcard expansion
+#
+#      :type cache_ttl: int
+#      :param cache_ttl: how often to update the cache from KairosDB, in seconds
+#
+#      :rtype: list
+#      :return: a list of unicode strings.  Each unicode string contains an expanded metric name.
+#
+#      KairosDB doesn't currently support wildcards, so get all metric
+#      names and expand them.
+#
+#      Currently only ".*." or "\*." or ".\*" expansions are supported.
+#      Substring expansions aren't supported at this time.
+#
+#      Graphite-web uses fnmatch or something similar, perhaps this
+#      should provide a list and re-use the same functionality.
+#
+#      This function caches the created tree for cache_ttl seconds and
+#      refreshes when the cache has aged beyond the cache_ttl.
+#      """
+#
+#      if "*" not in name:
+#          return [u'{0}'.format(name)]
+#      if "." in name:
+#          name_list = [ u'{0}'.format(n) for n in name.split(".")]
+#      else:
+#          name_list = [ name ]
+#      # print "Name_list is {0}".format(name_list)
+#      ts        = expand_graphite_wildcard_metric_name.cache_timestamp
+#      cache_tree = expand_graphite_wildcard_metric_name.cache_tree
+#      if ts == 0 or (time.time() - ts > cache_ttl):
+#          all_metric_name_list = metadata.get_all_metric_names(conn)
+#          cache_tree           = tree()
+#          _make_graphite_name_cache(cache_tree, all_metric_name_list)
+#          expand_graphite_wildcard_metric_name.cache_tree      = cache_tree
+#          expand_graphite_wildcard_metric_name.cache_timestamp = time.time()
+#      if name == "*": # special case for the root of the tree:
+#          return cache_tree.keys()
+#      if '*' in name and not '.' in name:
+#          return [ ctk for ctk in cache_tree.keys() if fnmatch.fnmatch(ctk, name)]
+#      expanded_name_list = util.metric_name_wildcard_expansion(cache_tree, name_list)
+#      # print "expanded_name_list is {0}".format(expanded_name_list)
+#
+#      return_list = [ ".".join(en) for en in expanded_name_list]
+#      return list(set(return_list))
+#
+#  expand_graphite_wildcard_metric_name.cache_tree = tree()
+#  expand_graphite_wildcard_metric_name.cache_timestamp = 0
 
 
 def leaf_or_branch(conn, name):
@@ -203,19 +206,20 @@ def leaf_or_branch(conn, name):
         return "leaf"
 
 
-def _make_graphite_name_cache(cache_tree, list_of_names):
-    """    :type cache_tree: defaultdict
-    :param cache_tree: a defaultdict initialized with the tree() function.  Contains names
-        of entries in the kairosdb, separated by "." per the graphite convention.
-
-    :type list_of_names: list
-    :param list_of_names: list of strings, in order, that will be sought after in the cache tree.
-
-    Given a list of names - all name - that kairosdb has, make a
-    tree of all those names.
-    """
-    for n in list_of_names:
-        util._add_to_cache(cache_tree, n.split('.'))
+# XXX fix along with util
+#  def _make_graphite_name_cache(cache_tree, list_of_names):
+#      """    :type cache_tree: defaultdict
+#      :param cache_tree: a defaultdict initialized with the tree() function.  Contains names
+#          of entries in the kairosdb, separated by "." per the graphite convention.
+#
+#      :type list_of_names: list
+#      :param list_of_names: list of strings, in order, that will be sought after in the cache tree.
+#
+#      Given a list of names - all name - that kairosdb has, make a
+#      tree of all those names.
+#      """
+#      for n in list_of_names:
+#          util._add_to_cache(cache_tree, n.split('.'))
 
 def graphite_metric_to_influxdb(metric, tags):
     """:type metric: tuple
@@ -232,36 +236,53 @@ def graphite_metric_to_influxdb(metric, tags):
     Graphite metrics are a tuple with a metric name, a timestamp, and
     a value, and they have a storage schema attached, which specifies
     the time period which should be used for that metric.  This must
-    be recorded in the tags for graphite querying to work
+    be recorded in the columns for graphite querying to work
 
-    KairosDB metrics are a hash of # XXX What should it be for influxdb?
     {
-     "name"      : string,
-     "timestamp" : java long int,
-     "value"     : float,
-     "tags"      : { "name" : "value", "name" : "value"}
+    "name": "some.graphite.metric",
+    "columns": [
+        "time", "value", "gr-ret"
+    ],
+    "points": [
+      [1387998050, 200.0, "60s_90d" ]
+    ]
     }
 
 
-    Even though influxdb uses a 64-bit lon int, the python API here expects
+    Even though influxdb uses a 64-bit long int, the python API here expects
     a float, as returned by time.time().  This module handles
     converting this when the data is written and read, and doesn't
     make the user deal with this conversion.
 
-    KairosDB and influxdb only allow alphanumeric and the following punctuation characters:
+    Influxdb only allows alphanumeric and the following punctuation
+    characters (see http://influxdb.org/docs/api/http.html)
 
-    ".", "/", "-", and "_".
+    "-", "_", and ".".
 
     Graphite is less restrictive.  Anything that doesn't match the
     above are converted to an underscore.
 
+    TODO: Keep an index of metric names that already have updates, and
+    update that metric instead of creating another metric.
+
+    For now this is naive.
     """
-    converted_metric_name = INVALID_CHARS.sub(TAG_SEPERATOR_CHAR, metric[0])
+    converted_metric_name = INVALID_CHARS.sub(RET_SEPERATOR_CHAR, metric[0])
+    if len(tags) > 0:
+        (c, p) = zip(*tags.items())
+        columns_list = list(c)
+        points_list = list(p)
+    else:
+        columns_list = []
+        points_list = []
+    columns_list.extend(("time", "value",))
+    points_list.append(int(metric[1] * 1000)) # Deal with time as a longing counting ms since the epoch instead of seconds
+    points_list.append(metric[2])
+
     return {
         "name"      : converted_metric_name,
-        "timestamp" : metric[1],
-        "value"     : metric[2],
-        "tags"      : tags
+        "columns"   : columns_list,
+        "points"    : [points_list]
     }
 
 
@@ -319,28 +340,29 @@ def _input_retention_resolution(retention_string_list):
     return min([(seconds_from_retention_tag(tag), tag) for tag in all_tags_set])# return the highest resolution
 
 
-def _lowest_resolution_retention(data, name):
-    """
-    :type data: requests.response.content
-    :param data: Content from the KairosDB query
-
-    :type name: str
-    :param name: The name of the metric whose retention will be extracted.
-
-    :rtype: int
-    :return: The number of seconds in the lowest-resolution retention period in the data
-
-    Graphite needs data to be divided into even time slices.  We
-    must store the slice information when writing data so that it can
-    be read out here.
-
-    The relevant tags are in the README.md for this project.
-    """
-    values = util.get_content_values_by_name(data, name)
-    all_tags_set = set() # easiest case - all tags are the same, otherwise we use the set
-    for result in values:
-        all_tags_set.update(util.get_matching_tags_from_result(result, RETENTION_TAG))
-    return max([ seconds_from_retention_tag(tag, RET_SEPERATOR_CHAR) for tag in all_tags_set])# return the lowest resolution
+# XXX: util
+# def _lowest_resolution_retention(data, name):
+#     """
+#     :type data: requests.response.content
+#     :param data: Content from the KairosDB query
+#
+#     :type name: str
+#     :param name: The name of the metric whose retention will be extracted.
+#
+#     :rtype: int
+#     :return: The number of seconds in the lowest-resolution retention period in the data
+#
+#     Graphite needs data to be divided into even time slices.  We
+#     must store the slice information when writing data so that it can
+#     be read out here.
+#
+#     The relevant tags are in the README.md for this project.
+#     """
+#     values = util.get_content_values_by_name(data, name)
+#     all_tags_set = set() # easiest case - all tags are the same, otherwise we use the set
+#     for result in values:
+#         all_tags_set.update(util.get_matching_tags_from_result(result, RETENTION_TAG))
+#     return max([ seconds_from_retention_tag(tag, RET_SEPERATOR_CHAR) for tag in all_tags_set])# return the lowest resolution
 
 def read_absolute(conn, metric_name, start_time, end_time):
     """
