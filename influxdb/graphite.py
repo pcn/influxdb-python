@@ -81,8 +81,10 @@ def graphite_metric_list_with_retentions_to_influxdb_list(metric_list, storage_s
 
     XXX this API is getting messy - it should be simpler. -PN
     """
-    retentions_list = _graphite_metric_list_retentions(metric_list, storage_schemas)
-    for m,r in zip(metric_list, retentions_list):
+    # Generate a lazy list of retentions that will match
+    retentions_generator = _graphite_metric_list_retentions(metric_list, storage_schemas)
+    # print retentions_generator.next()
+    for m,r in zip(metric_list, retentions_generator): # XXX use itertools' izip?
         tags = {}
         if len(pervasive_tags) > 0:
             tags.update(pervasive_tags)
